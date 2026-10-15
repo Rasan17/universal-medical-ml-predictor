@@ -1,5 +1,5 @@
-> [!WARNING]
-> **This repository is outdated and no longer maintained.** It contains known statistical errors. The corrected and independently verified version is at **https://github.com/Rasan17/ai**, running online at **https://rasan17.github.io/ai/**.
+> [!NOTE]
+> **This app has moved.** The current version is at **https://github.com/Rasan17/ai**, running online at **https://rasan17.github.io/ai/**.
 
 # Universal Medical ML/NeuralNet Predictor
 

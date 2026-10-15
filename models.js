@@ -726,11 +726,22 @@
                         metrics: this.isClassification ? ['accuracy'] : ['mse']
                     });
 
+                    // Seed-reproducible training data shuffling using deterministic PRNG
+                    const indices = trainX.map((_, idx) => idx);
+                    for (let i = indices.length - 1; i > 0; i--) {
+                        const j = Math.floor(this.rng() * (i + 1));
+                        const tmp = indices[i];
+                        indices[i] = indices[j];
+                        indices[j] = tmp;
+                    }
+                    const shuffledTrainX = indices.map(idx => trainX[idx]);
+                    const shuffledTrainY = indices.map(idx => trainY[idx]);
+
                     // Prepare Tensors
-                    xTensor = tf.tensor2d(trainX, [trainX.length, inputDim]);
+                    xTensor = tf.tensor2d(shuffledTrainX, [shuffledTrainX.length, inputDim]);
                     yTensor = this.isClassification ?
-                        tf.tensor1d(trainY, 'int32') :
-                        tf.tensor2d(trainY.map(v => [v]), [trainY.length, 1]);
+                        tf.tensor1d(shuffledTrainY, 'int32') :
+                        tf.tensor2d(shuffledTrainY.map(v => [v]), [shuffledTrainY.length, 1]);
 
                     let validationData = null;
                     if (testX && testY && testX.length > 0) {
@@ -747,7 +758,7 @@
                         epochs: this.epochs,
                         batchSize: Math.min(this.batchSize, trainX.length),
                         validationData: validationData,
-                        shuffle: true,
+                        shuffle: false, // deterministic: already seeded-shuffled above
                         callbacks: {
                             onEpochEnd: (epoch, logs) => {
                                 history.loss.push(Number(logs.loss.toFixed(4)));
@@ -786,12 +797,7 @@
                 'momentum'
             );
             this.fallbackGLM.fit(trainX, trainY);
-            this.history = {
-                loss: [0.8, 0.6, 0.4, 0.3],
-                valLoss: [0.85, 0.65, 0.45, 0.35],
-                accuracy: [0.65, 0.78, 0.85, 0.90],
-                valAccuracy: [0.60, 0.72, 0.80, 0.85]
-            };
+            this.history = { loss: [], valLoss: [], accuracy: [], valAccuracy: [] };
         }
 
         predictSingle(x) {
@@ -919,9 +925,17 @@
                 }
             }
 
-            // Determine weights
-            const valX = (testX && testX.length > 0) ? testX : trainX.slice(0, Math.min(trainX.length, 50));
-            const valY = (testY && testY.length > 0) ? testY : trainY.slice(0, Math.min(trainY.length, 50));
+            // Determine weights strictly on an internal training fold partition (zero leakage into test set)
+            let valX = [];
+            let valY = [];
+            if (trainX.length >= 10) {
+                const valSize = Math.max(2, Math.floor(trainX.length * 0.2));
+                valX = trainX.slice(-valSize);
+                valY = trainY.slice(-valSize);
+            } else {
+                valX = trainX;
+                valY = trainY;
+            }
 
             const power = this.userHyperparams.power || 2;
             let rawWeights = [];
@@ -1302,7 +1316,10 @@
         },
 
         _calculateBinaryAUC(yTrue, yScores) {
-            // Rank-based Mann-Whitney U test calculation for ROC AUC
+            // Rank-based Mann-Whitney U test calculation for ROC AUC with mid-rank tie handling
+            const n = yTrue.length;
+            if (n === 0) return null;
+
             const items = yTrue.map((val, idx) => ({ y: val, score: yScores[idx] }));
             items.sort((a, b) => a.score - b.score);
 
@@ -1313,12 +1330,29 @@
                 else nNeg++;
             });
 
-            if (nPos === 0 || nNeg === 0) return 1.0;
+            // ROC-AUC is undefined when test set lacks either positive or negative class
+            if (nPos === 0 || nNeg === 0) return null;
+
+            // Assign mid-ranks for tied scores
+            const ranks = new Array(n);
+            let i = 0;
+            while (i < n) {
+                let j = i;
+                while (j < n - 1 && items[j + 1].score === items[i].score) {
+                    j++;
+                }
+                // Items from i to j have tied scores; rank is 1-based average: ( (i+1) + ... + (j+1) ) / (j - i + 1)
+                const avgRank = (i + 1 + j + 1) / 2;
+                for (let k = i; k <= j; k++) {
+                    ranks[k] = avgRank;
+                }
+                i = j + 1;
+            }
 
             let rankSumPos = 0;
             items.forEach((it, idx) => {
                 if (it.y === 1) {
-                    rankSumPos += (idx + 1);
+                    rankSumPos += ranks[idx];
                 }
             });
 

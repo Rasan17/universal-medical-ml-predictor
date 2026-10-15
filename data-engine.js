@@ -269,12 +269,13 @@
             const audit = [];
             const rowsToDrop = new Set();
 
-            // First pass: identify rows that must be dropped if user chose 'drop' on any column
+            // First pass: identify rows that must be dropped if user chose 'drop' on any column, or if target is missing
             Object.keys(columnConfigs).forEach(col => {
                 const config = columnConfigs[col];
                 if (config.role === 'meta') return; // skip meta columns
 
-                if (config.imputationStrategy === 'drop') {
+                // Clinical rule: Outcome/target must NEVER be fabricated or imputed. Missing outcomes are dropped.
+                if (config.role === 'target' || config.imputationStrategy === 'drop') {
                     workingRows.forEach((row, rIdx) => {
                         if (this.isMissing(row[col])) {
                             rowsToDrop.add(rIdx);
@@ -287,7 +288,7 @@
                 workingRows = workingRows.filter((_, idx) => !rowsToDrop.has(idx));
                 audit.push({
                     type: 'drop_rows',
-                    description: `Dropped ${rowsToDrop.size} rows with missing values in columns marked for row deletion.`
+                    description: `Dropped ${rowsToDrop.size} rows with missing values in columns marked for row deletion or missing clinical outcome.`
                 });
             }
 
@@ -295,7 +296,7 @@
             Object.keys(columnConfigs).forEach(col => {
                 const config = columnConfigs[col];
                 const analysis = columnAnalysis[col];
-                if (config.role === 'meta') return;
+                if (config.role === 'meta' || config.role === 'target') return; // Target is NEVER imputed!
                 if (config.imputationStrategy === 'drop') return;
 
                 const strategy = config.imputationStrategy;
@@ -553,7 +554,33 @@
                     if (allNum) {
                         ranks.sort((a, b) => Number(a) - Number(b));
                     } else {
-                        ranks.sort();
+                        // Intelligent clinical ordering for standard qualitative scales
+                        const clinicalScales = [
+                            ['none', 'mild', 'moderate', 'severe'],
+                            ['absent', 'present'],
+                            ['no', 'yes'],
+                            ['low', 'medium', 'high', 'very high'],
+                            ['stage 0', 'stage 1', 'stage 2', 'stage 3', 'stage 4'],
+                            ['grade 0', 'grade 1', 'grade 2', 'grade 3', 'grade 4'],
+                            ['grade i', 'grade ii', 'grade iii', 'grade iv']
+                        ];
+                        const lowerRanks = ranks.map(r => String(r).toLowerCase().trim());
+                        let matchedScale = null;
+                        for (const scale of clinicalScales) {
+                            if (lowerRanks.every(r => scale.includes(r))) {
+                                matchedScale = scale;
+                                break;
+                            }
+                        }
+                        if (matchedScale) {
+                            ranks.sort((a, b) => {
+                                const idxA = matchedScale.indexOf(String(a).toLowerCase().trim());
+                                const idxB = matchedScale.indexOf(String(b).toLowerCase().trim());
+                                return idxA - idxB;
+                            });
+                        } else {
+                            ranks.sort();
+                        }
                     }
                     const rankMap = {};
                     ranks.forEach((val, rk) => {
@@ -662,10 +689,10 @@
                     const rankVal = meta.rankMap[String(rawVal)] !== undefined ? meta.rankMap[String(rawVal)] : 0;
                     xRow[meta.startIndex] = rankVal;
                 } else {
-                    const num = Number(rawVal);
-                    if (isNaN(num)) {
-                        xRow[meta.startIndex] = 0; // fallback to mean (which is 0 after standardisation)
+                    if (this.isMissing(rawVal) || rawVal === '' || rawVal === null || typeof rawVal === 'undefined' || isNaN(Number(rawVal))) {
+                        xRow[meta.startIndex] = 0; // fallback to training mean (which is 0 after standardisation)
                     } else {
+                        const num = Number(rawVal);
                         const scaled = (num - meta.mean) / meta.std;
                         xRow[meta.startIndex] = isNaN(scaled) ? 0 : Number(scaled.toFixed(5));
                     }
@@ -812,8 +839,8 @@
             const fillValues = {};
             const columnStats = {};
 
+            // Strictly impute predictor feature columns only - clinical outcome/target is NEVER imputed
             const allCols = [...featureCols];
-            if (targetCol && !allCols.includes(targetCol)) allCols.push(targetCol);
 
             allCols.forEach(col => {
                 const conf = columnConfigs[col] || { type: 'continuous' };
@@ -1361,9 +1388,35 @@
                         // One-Way ANOVA F-test
                         const groups = {};
                         targetClasses.forEach(c => groups[c] = []);
+
+                        // For text ordinal features, build rank mapping first
+                        let rankMap = null;
+                        if (columnConfigs[col]?.type === 'ordinal') {
+                            const distinctVals = Array.from(new Set(rows.map(r => r[col]))).filter(v => !this.isMissing(v));
+                            if (distinctVals.some(v => isNaN(Number(v)))) {
+                                rankMap = {};
+                                const sorted = [...distinctVals];
+                                const clinicalScales = ['none', 'mild', 'moderate', 'severe', 'absent', 'present', 'low', 'medium', 'high', 'very high', 'no', 'yes'];
+                                const lower = sorted.map(s => String(s).toLowerCase().trim());
+                                if (lower.every(r => clinicalScales.includes(r))) {
+                                    sorted.sort((a, b) => clinicalScales.indexOf(String(a).toLowerCase().trim()) - clinicalScales.indexOf(String(b).toLowerCase().trim()));
+                                } else {
+                                    sorted.sort();
+                                }
+                                sorted.forEach((v, idx) => { rankMap[String(v)] = idx; });
+                            }
+                        }
+
                         rows.forEach(r => {
-                            const val = Number(r[col]);
-                            if (!isNaN(val)) groups[String(r[targetCol])].push(val);
+                            let val;
+                            if (rankMap) {
+                                val = rankMap[String(r[col])];
+                            } else {
+                                val = Number(r[col]);
+                            }
+                            if (!isNaN(val) && val !== null && val !== undefined) {
+                                groups[String(r[targetCol])].push(val);
+                            }
                         });
 
                         const N = rows.length;
@@ -1500,7 +1553,7 @@
                         const df2 = Math.max(1, N - K);
                         const msBetween = ssBetween / (df1 || 1);
                         const msWithin = ssWithin / (df2 || 1);
-                        const fStat = msWithin > 0 ? (ssBetween / msWithin) : 0;
+                        const fStat = msWithin > 0 ? (msBetween / msWithin) : 0;
                         const pVal = this.fTestPValue(fStat, df1, df2);
 
                         results.push({
@@ -1568,17 +1621,17 @@
                 }
             });
 
-            const minorityPct = minCount / total;
-            const threshold = 0.30;
+            const imbalanceRatio = minCount / (maxCount || 1);
+            const threshold = 0.60; // Imbalance flagged if minority is < 60% of majority class
 
-            if (minorityPct >= threshold) {
+            if (imbalanceRatio >= threshold) {
                 return {
                     balancedRows: trainRows,
                     applied: false,
                     minorityClass,
-                    minorityPct: Number((minorityPct * 100).toFixed(1)),
+                    imbalanceRatio: Number((imbalanceRatio * 100).toFixed(1)),
                     classCounts,
-                    reason: `Minority class is ${(minorityPct * 100).toFixed(1)}% (>= 30% threshold). Cohort is sufficiently balanced.`
+                    reason: `Minority class is ${(imbalanceRatio * 100).toFixed(1)}% of majority class (>= 60% threshold). Cohort is sufficiently balanced.`
                 };
             }
 
@@ -1600,21 +1653,17 @@
 
             // Compute standard deviations for continuous features among minority class
             const stdMap = {};
-            const stdList = [];
             contCols.forEach(col => {
                 const vals = minorityRows.map(r => Number(r[col])).filter(n => !isNaN(n));
                 const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
                 const v = vals.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (vals.length || 1);
                 const s = Math.sqrt(v);
                 stdMap[col] = s > 0 ? s : 1.0;
-                stdList.push(s);
             });
 
-            // Median of standard deviations for categorical difference weighting
-            stdList.sort((a, b) => a - b);
-            const mid = Math.floor(stdList.length / 2);
-            const medianStd = stdList.length > 0 ? (stdList.length % 2 === 0 ? (stdList[mid - 1] + stdList[mid]) / 2 : stdList[mid]) : 1.0;
-            const catPenalty = Math.pow(medianStd || 1.0, 2);
+            // Since continuous distances are standardized by stdMap, each has unit variance.
+            // A categorical mismatch penalty is 1.0 (equivalent to 1 standard deviation mismatch).
+            const catPenalty = 1.0;
 
             // Compute number of synthetic samples needed to bring minority to majority (balanced)
             const numSynthNeeded = maxCount - minCount;
@@ -1656,12 +1705,16 @@
 
                 // Synthesize new row
                 const newRow = {};
-                // Continuous features: interpolation
+                // Continuous features: interpolation; Ordinal features: integer rounding
                 const lambda = rng();
                 contCols.forEach(col => {
                     const v1 = Number(baseRow[col]);
                     const v2 = Number(chosenNeighbor[col]);
-                    newRow[col] = Number((v1 + lambda * (v2 - v1)).toFixed(4));
+                    if (columnConfigs[col]?.type === 'ordinal') {
+                        newRow[col] = Math.round(v1 + lambda * (v2 - v1));
+                    } else {
+                        newRow[col] = Number((v1 + lambda * (v2 - v1)).toFixed(4));
+                    }
                 });
 
                 // Categorical features: mode among the k neighbors

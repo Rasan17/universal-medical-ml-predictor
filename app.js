@@ -585,105 +585,7 @@
         // Imputation execution
         DOM.applyImputationBtn.addEventListener('click', executeImputation);
 
-        // =========================================================================
-        // MODEL TESTING SCOPE & SELECTION (Single, Multi, All Models)
-        // =========================================================================
-        function setModelScope(scope) {
-            AppState.modelScope = scope;
-            if (DOM.scopeSingle) DOM.scopeSingle.checked = (scope === 'single');
-            if (DOM.scopeMulti) DOM.scopeMulti.checked = (scope === 'multi');
-            if (DOM.scopeAll) DOM.scopeAll.checked = (scope === 'all');
-
-            if (DOM.scopeSingleLabel) DOM.scopeSingleLabel.classList.toggle('active-single', scope === 'single');
-            if (DOM.scopeMultiLabel) DOM.scopeMultiLabel.classList.toggle('active-multi', scope === 'multi');
-            if (DOM.scopeAllLabel) DOM.scopeAllLabel.classList.toggle('active-all', scope === 'all');
-
-            if (scope === 'single') {
-                const singleId = AppState.selectedModelId || AppState.selectedModelIds[0] || 'nn';
-                AppState.selectedModelIds = [singleId];
-                AppState.selectedModelId = singleId;
-                AppState.activeHyperparamModelId = singleId;
-            } else if (scope === 'all') {
-                AppState.selectedModelIds = ALL_MODEL_IDS.slice();
-            } else if (scope === 'multi') {
-                if (AppState.selectedModelIds.length <= 1) {
-                    AppState.selectedModelIds = ['ensemble', 'rf', 'nn'];
-                }
-            }
-            syncModelCardSelections();
-            updateTrainButtonLabel();
-        }
-
-        function syncModelCardSelections() {
-            DOM.modelCards.forEach(card => {
-                const mId = card.dataset.modelId;
-                const isSelected = AppState.selectedModelIds.includes(mId);
-                card.classList.toggle('selected', isSelected);
-                const chk = card.querySelector('.model-select-checkbox');
-                if (chk) chk.checked = isSelected;
-            });
-
-            if (DOM.activeHyperparamSelect) {
-                if (AppState.selectedModelIds.includes(AppState.activeHyperparamModelId)) {
-                    DOM.activeHyperparamSelect.value = AppState.activeHyperparamModelId;
-                } else if (AppState.selectedModelIds.length > 0) {
-                    AppState.activeHyperparamModelId = AppState.selectedModelIds[0];
-                    DOM.activeHyperparamSelect.value = AppState.activeHyperparamModelId;
-                }
-            }
-            updateHyperparamsVisibility(AppState.activeHyperparamModelId);
-        }
-
-        function toggleModelSelection(mId) {
-            if (AppState.modelScope === 'single') {
-                AppState.selectedModelId = mId;
-                AppState.selectedModelIds = [mId];
-                AppState.activeHyperparamModelId = mId;
-            } else {
-                const idx = AppState.selectedModelIds.indexOf(mId);
-                if (idx >= 0) {
-                    if (AppState.selectedModelIds.length > 1) {
-                        AppState.selectedModelIds.splice(idx, 1);
-                    } else {
-                        // Prevent deselecting last remaining model
-                        return;
-                    }
-                } else {
-                    AppState.selectedModelIds.push(mId);
-                }
-                AppState.activeHyperparamModelId = mId;
-
-                if (AppState.selectedModelIds.length === ALL_MODEL_IDS.length) {
-                    AppState.modelScope = 'all';
-                } else if (AppState.selectedModelIds.length === 1) {
-                    AppState.modelScope = 'single';
-                    AppState.selectedModelId = AppState.selectedModelIds[0];
-                } else {
-                    AppState.modelScope = 'multi';
-                }
-                if (DOM.scopeSingle) DOM.scopeSingle.checked = (AppState.modelScope === 'single');
-                if (DOM.scopeMulti) DOM.scopeMulti.checked = (AppState.modelScope === 'multi');
-                if (DOM.scopeAll) DOM.scopeAll.checked = (AppState.modelScope === 'all');
-                if (DOM.scopeSingleLabel) DOM.scopeSingleLabel.classList.toggle('active-single', AppState.modelScope === 'single');
-                if (DOM.scopeMultiLabel) DOM.scopeMultiLabel.classList.toggle('active-multi', AppState.modelScope === 'multi');
-                if (DOM.scopeAllLabel) DOM.scopeAllLabel.classList.toggle('active-all', AppState.modelScope === 'all');
-            }
-            syncModelCardSelections();
-            updateTrainButtonLabel();
-        }
-
-        function updateTrainButtonLabel() {
-            if (!DOM.trainModelBtn) return;
-            const count = AppState.selectedModelIds.length;
-            if (count === 1) {
-                const mInfo = MODEL_INFO[AppState.selectedModelIds[0]] || { short: AppState.selectedModelIds[0].toUpperCase() };
-                DOM.trainModelBtn.textContent = `🚀 Train & Test 1 Model (${mInfo.short})`;
-            } else if (count === ALL_MODEL_IDS.length) {
-                DOM.trainModelBtn.textContent = `🏆 Run Full Tournament (Train & Test All 6 Models)`;
-            } else {
-                DOM.trainModelBtn.textContent = `🚀 Train & Benchmark ${count} Selected Models`;
-            }
-        }
+        // (Model scope functions moved to module scope below)
 
         // Scope Radio Changes & Label Clicks
         if (DOM.scopeSingle) DOM.scopeSingle.addEventListener('change', () => setModelScope('single'));
@@ -742,39 +644,6 @@
         }
 
         // Protocol Mode Toggle (Option A vs Option B)
-        function setValidationMode(mode) {
-            AppState.validationMode = mode;
-            if (mode === 'split') {
-                if (DOM.valModeA) DOM.valModeA.checked = true;
-                if (DOM.cardModeA) {
-                    DOM.cardModeA.classList.add('selected-a');
-                    DOM.cardModeA.style.borderColor = 'var(--accent-cyan)';
-                    DOM.cardModeA.style.background = 'rgba(6, 182, 212, 0.08)';
-                }
-                if (DOM.cardModeB) {
-                    DOM.cardModeB.classList.remove('selected-b');
-                    DOM.cardModeB.style.borderColor = 'var(--border-color)';
-                    DOM.cardModeB.style.background = 'var(--bg-surface-subtle)';
-                }
-                if (DOM.optionAContainer) DOM.optionAContainer.style.display = 'block';
-                if (DOM.optionBContainer) DOM.optionBContainer.style.display = 'none';
-            } else {
-                if (DOM.valModeB) DOM.valModeB.checked = true;
-                if (DOM.cardModeB) {
-                    DOM.cardModeB.classList.add('selected-b');
-                    DOM.cardModeB.style.borderColor = 'var(--accent-purple)';
-                    DOM.cardModeB.style.background = 'rgba(168, 85, 247, 0.08)';
-                }
-                if (DOM.cardModeA) {
-                    DOM.cardModeA.classList.remove('selected-a');
-                    DOM.cardModeA.style.borderColor = 'var(--border-color)';
-                    DOM.cardModeA.style.background = 'var(--bg-surface-subtle)';
-                }
-                if (DOM.optionAContainer) DOM.optionAContainer.style.display = 'none';
-                if (DOM.optionBContainer) DOM.optionBContainer.style.display = 'block';
-                refreshOptionBSummaries();
-            }
-        }
 
         if (DOM.valModeA) DOM.valModeA.addEventListener('change', () => setValidationMode('split'));
         if (DOM.valModeB) DOM.valModeB.addEventListener('change', () => setValidationMode('separate'));
@@ -866,6 +735,140 @@
         DOM.downloadBatchCsvBtn.addEventListener('click', downloadBatchCSV);
     }
 
+    // =========================================================================
+    // MODEL TESTING SCOPE & SELECTION (Single, Multi, All Models) - Module Scope
+    // =========================================================================
+    function setModelScope(scope) {
+        AppState.modelScope = scope;
+        if (DOM.scopeSingle) DOM.scopeSingle.checked = (scope === 'single');
+        if (DOM.scopeMulti) DOM.scopeMulti.checked = (scope === 'multi');
+        if (DOM.scopeAll) DOM.scopeAll.checked = (scope === 'all');
+
+        if (DOM.scopeSingleLabel) DOM.scopeSingleLabel.classList.toggle('active-single', scope === 'single');
+        if (DOM.scopeMultiLabel) DOM.scopeMultiLabel.classList.toggle('active-multi', scope === 'multi');
+        if (DOM.scopeAllLabel) DOM.scopeAllLabel.classList.toggle('active-all', scope === 'all');
+
+        if (scope === 'single') {
+            const singleId = AppState.selectedModelId || AppState.selectedModelIds[0] || 'nn';
+            AppState.selectedModelIds = [singleId];
+            AppState.selectedModelId = singleId;
+            AppState.activeHyperparamModelId = singleId;
+        } else if (scope === 'all') {
+            AppState.selectedModelIds = ALL_MODEL_IDS.slice();
+        } else if (scope === 'multi') {
+            if (AppState.selectedModelIds.length <= 1) {
+                AppState.selectedModelIds = ['ensemble', 'rf', 'nn'];
+            }
+        }
+        syncModelCardSelections();
+        updateTrainButtonLabel();
+    }
+
+    function syncModelCardSelections() {
+        if (!DOM.modelCards) return;
+        DOM.modelCards.forEach(card => {
+            const mId = card.dataset.modelId;
+            const isSelected = AppState.selectedModelIds.includes(mId);
+            card.classList.toggle('selected', isSelected);
+            const chk = card.querySelector('.model-select-checkbox');
+            if (chk) chk.checked = isSelected;
+        });
+
+        if (DOM.activeHyperparamSelect) {
+            if (AppState.selectedModelIds.includes(AppState.activeHyperparamModelId)) {
+                DOM.activeHyperparamSelect.value = AppState.activeHyperparamModelId;
+            } else if (AppState.selectedModelIds.length > 0) {
+                AppState.activeHyperparamModelId = AppState.selectedModelIds[0];
+                DOM.activeHyperparamSelect.value = AppState.activeHyperparamModelId;
+            }
+        }
+        updateHyperparamsVisibility(AppState.activeHyperparamModelId);
+    }
+
+    function toggleModelSelection(mId) {
+        if (AppState.modelScope === 'single') {
+            AppState.selectedModelId = mId;
+            AppState.selectedModelIds = [mId];
+            AppState.activeHyperparamModelId = mId;
+        } else {
+            const idx = AppState.selectedModelIds.indexOf(mId);
+            if (idx >= 0) {
+                if (AppState.selectedModelIds.length > 1) {
+                    AppState.selectedModelIds.splice(idx, 1);
+                } else {
+                    return; // Prevent deselecting last remaining model
+                }
+            } else {
+                AppState.selectedModelIds.push(mId);
+            }
+            AppState.activeHyperparamModelId = mId;
+
+            if (AppState.selectedModelIds.length === ALL_MODEL_IDS.length) {
+                AppState.modelScope = 'all';
+            } else if (AppState.selectedModelIds.length === 1) {
+                AppState.modelScope = 'single';
+                AppState.selectedModelId = AppState.selectedModelIds[0];
+            } else {
+                AppState.modelScope = 'multi';
+            }
+            if (DOM.scopeSingle) DOM.scopeSingle.checked = (AppState.modelScope === 'single');
+            if (DOM.scopeMulti) DOM.scopeMulti.checked = (AppState.modelScope === 'multi');
+            if (DOM.scopeAll) DOM.scopeAll.checked = (AppState.modelScope === 'all');
+            if (DOM.scopeSingleLabel) DOM.scopeSingleLabel.classList.toggle('active-single', AppState.modelScope === 'single');
+            if (DOM.scopeMultiLabel) DOM.scopeMultiLabel.classList.toggle('active-multi', AppState.modelScope === 'multi');
+            if (DOM.scopeAllLabel) DOM.scopeAllLabel.classList.toggle('active-all', AppState.modelScope === 'all');
+        }
+        syncModelCardSelections();
+        updateTrainButtonLabel();
+    }
+
+    function updateTrainButtonLabel() {
+        if (!DOM.trainModelBtn) return;
+        const count = AppState.selectedModelIds.length;
+        if (count === 1) {
+            const mInfo = MODEL_INFO[AppState.selectedModelIds[0]] || { short: AppState.selectedModelIds[0].toUpperCase() };
+            DOM.trainModelBtn.textContent = `🚀 Train & Test 1 Model (${mInfo.short})`;
+        } else if (count === ALL_MODEL_IDS.length) {
+            DOM.trainModelBtn.textContent = `🏆 Run Full Tournament (Train & Test All 6 Models)`;
+        } else {
+            DOM.trainModelBtn.textContent = `🚀 Train & Benchmark ${count} Selected Models`;
+        }
+    }
+
+    function setValidationMode(mode) {
+        AppState.validationMode = mode;
+        if (mode === 'split') {
+            if (DOM.valModeA) DOM.valModeA.checked = true;
+            if (DOM.cardModeA) {
+                DOM.cardModeA.classList.add('selected-a');
+                DOM.cardModeA.style.borderColor = 'var(--accent-cyan)';
+                DOM.cardModeA.style.background = 'rgba(6, 182, 212, 0.08)';
+            }
+            if (DOM.cardModeB) {
+                DOM.cardModeB.classList.remove('selected-b');
+                DOM.cardModeB.style.borderColor = 'var(--border-color)';
+                DOM.cardModeB.style.background = 'var(--bg-surface-subtle)';
+            }
+            if (DOM.optionAContainer) DOM.optionAContainer.style.display = 'block';
+            if (DOM.optionBContainer) DOM.optionBContainer.style.display = 'none';
+        } else {
+            if (DOM.valModeB) DOM.valModeB.checked = true;
+            if (DOM.cardModeB) {
+                DOM.cardModeB.classList.add('selected-b');
+                DOM.cardModeB.style.borderColor = 'var(--accent-purple)';
+                DOM.cardModeB.style.background = 'rgba(168, 85, 247, 0.08)';
+            }
+            if (DOM.cardModeA) {
+                DOM.cardModeA.classList.remove('selected-a');
+                DOM.cardModeA.style.borderColor = 'var(--border-color)';
+                DOM.cardModeA.style.background = 'var(--bg-surface-subtle)';
+            }
+            if (DOM.optionAContainer) DOM.optionAContainer.style.display = 'none';
+            if (DOM.optionBContainer) DOM.optionBContainer.style.display = 'block';
+            refreshOptionBSummaries();
+        }
+    }
+
     function syncTrainTestSplit(trainVal) {
         let train = Math.min(95, Math.max(50, Math.round(trainVal)));
         let test = 100 - train;
@@ -947,7 +950,7 @@
         if (AppState.imputedData && AppState.columnConfigs) {
             const targetCol = Object.keys(AppState.columnConfigs).find(c => AppState.columnConfigs[c].role === 'target');
             const targetCfg = targetCol ? AppState.columnConfigs[targetCol] : null;
-            const isClf = targetCfg ? (targetCfg.type === 'binary' || targetCfg.type === 'multiclass') : true;
+            const isClf = targetCfg ? (targetCfg.type !== 'continuous') : true;
             DOM.optBTrainSummary.innerHTML = `
                 <div><strong>Source:</strong> ${AppState.fileName || 'Active Dataset'}</div>
                 <div><strong>Training Cases:</strong> ${AppState.imputedData.imputedRows.length} patients (100% used for model parameter fitting)</div>
@@ -1134,6 +1137,43 @@
                     customImputeVal: ''
                 };
             });
+
+            // Reset downstream state from any previously loaded dataset
+            AppState.imputedData = null;
+            AppState.prepMeta = null;
+            AppState.trainedModel = null;
+            AppState.allTestedResults = null;
+            AppState.deployedModelId = null;
+            AppState.evalResults = null;
+            AppState.deployedSource = null;
+            AppState.separateTestRawRows = null;
+            AppState.separateTestFileName = null;
+            AppState.pipeline = {
+                step: 1,
+                featureCols: [],
+                targetCol: null,
+                columnConfigs: {},
+                trainRows: [],
+                testRows: [],
+                imputer: null,
+                imputedTrainRows: [],
+                imputedTestRows: [],
+                vifResults: [],
+                vifDroppedCols: [],
+                balancedTrainRows: [],
+                smoteReport: null,
+                univariateResults: [],
+                selectedFeatures: [],
+                activeFeatures: [],
+                evalSeed: 42,
+                benchmarkResults: []
+            };
+
+            // Reset UI displays
+            if (DOM.tournamentResultsContainer) DOM.tournamentResultsContainer.style.display = 'none';
+            if (DOM.singleResultBanner) DOM.singleResultBanner.style.display = 'none';
+            if (DOM.pipelineResultsContainer) DOM.pipelineResultsContainer.style.display = 'none';
+            updatePredictionProvenanceBar();
 
             renderDataOverview();
             DOM.toStep2Btn.disabled = false;
@@ -1612,7 +1652,10 @@
             const h3El = document.getElementById('nn-h3-input');
             const h3 = h3El ? (parseInt(h3El.value, 10) || 0) : 0;
             hp.hiddenLayers = h3 > 0 ? [h1, h2, h3] : [h1, h2];
-            hp.dropoutRate = parseFloat(document.getElementById('nn-dropout-input')?.value) || 0.1;
+            const dropoutRaw = document.getElementById('nn-dropout-input')?.value;
+            hp.dropoutRate = (dropoutRaw !== undefined && dropoutRaw !== '' && !isNaN(parseFloat(dropoutRaw)))
+                ? parseFloat(dropoutRaw)
+                : 0.1;
             hp.activation = document.getElementById('nn-act-select')?.value || 'relu';
             const optEl = document.getElementById('nn-optimizer-select');
             hp.optimizer = optEl ? optEl.value : 'adam';
@@ -2718,8 +2761,11 @@
             : '';
 
         if (prep.isClassification) {
-            const predictedLabel = prep.targetIdxToClass[result.pred] || result.pred;
-            const confidencePercent = result.confidence ? (result.confidence * 100).toFixed(1) : '90.0';
+            const confidencePercent = (typeof result.confidence === 'number' && !isNaN(result.confidence))
+                ? (result.confidence * 100).toFixed(1)
+                : (result.probabilities && result.probabilities[result.pred] !== undefined
+                    ? (result.probabilities[result.pred] * 100).toFixed(1)
+                    : null);
 
             let probBarsHtml = '';
             if (result.probabilities) {
@@ -2746,10 +2792,11 @@
                 </div>
                 <div class="banner-confidence">
                     <span style="font-size: 12px; color: var(--text-muted); text-transform: uppercase;">Confidence</span>
-                    <span style="font-size: 26px; font-weight: 800; color: var(--accent-emerald);">${confidencePercent}%</span>
+                    <span style="font-size: 26px; font-weight: 800; color: var(--accent-emerald);">${confidencePercent !== null ? confidencePercent + '%' : 'N/A'}</span>
+                    ${confidencePercent !== null ? `
                     <div class="prob-meter-bar">
                         <div class="prob-meter-fill" style="width: ${confidencePercent}%;"></div>
-                    </div>
+                    </div>` : ''}
                     <div style="margin-top: 8px;">
                         ${probBarsHtml}
                     </div>
@@ -2827,7 +2874,13 @@
             let confidence = 'N/A';
             if (prep.isClassification) {
                 predictedLabel = prep.targetIdxToClass[predRes.pred] || predRes.pred;
-                confidence = predRes.confidence ? `${(predRes.confidence * 100).toFixed(1)}%` : '90.0%';
+                if (typeof predRes.confidence === 'number' && !isNaN(predRes.confidence)) {
+                    confidence = `${(predRes.confidence * 100).toFixed(1)}%`;
+                } else if (predRes.probabilities && predRes.probabilities[predRes.pred] !== undefined) {
+                    confidence = `${(predRes.probabilities[predRes.pred] * 100).toFixed(1)}%`;
+                } else {
+                    confidence = 'N/A';
+                }
             }
 
             const rowCopy = { ...r };
@@ -2994,12 +3047,19 @@
         const imputeStrategy = DOM.pipelineImputeStrategy ? DOM.pipelineImputeStrategy.value : 'median';
         AppState.pipeline.imputeStrategy = imputeStrategy;
 
+        // Filter out any rows with missing outcome/target (clinical ground truth must never be fabricated)
+        const validCohortRows = AppState.parsedData.rows.filter(r => !DataEngine.isMissing(r[targetCol]));
+        if (validCohortRows.length === 0) {
+            alert("All rows have missing outcome values. Please select a valid target column.");
+            return;
+        }
+
         // Perform 80/20 Train/Test split
         const isClassification = AppState.columnConfigs[targetCol]?.type !== 'continuous';
-        const targetVals = AppState.parsedData.rows.map(r => r[targetCol]);
+        const targetVals = validCohortRows.map(r => r[targetCol]);
 
         const splitResult = DataEngine.trainTestSplit(
-            AppState.parsedData.rows,
+            validCohortRows,
             targetVals,
             0.8,
             isClassification,
@@ -3196,13 +3256,13 @@
                             </div>
                         </div>
                         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                            <button class="btn btn-rose btn-sm" onclick="window.pipelineDropFeature('${p.var1}')" ${var1Dropped ? 'disabled' : ''}>
+                            <button class="btn btn-rose btn-sm" onclick="window.pipelineDropFeature('${p.var1.replace(/'/g, "\\'")}')" ${var1Dropped ? 'disabled' : ''}>
                                 ${var1Dropped ? `✓ Dropped ${p.var1}` : `🗑️ Drop ${p.var1}`}
                             </button>
-                            <button class="btn btn-rose btn-sm" onclick="window.pipelineDropFeature('${p.var2}')" ${var2Dropped ? 'disabled' : ''}>
+                            <button class="btn btn-rose btn-sm" onclick="window.pipelineDropFeature('${p.var2.replace(/'/g, "\\'")}')" ${var2Dropped ? 'disabled' : ''}>
                                 ${var2Dropped ? `✓ Dropped ${p.var2}` : `🗑️ Drop ${p.var2}`}
                             </button>
-                            <button class="btn btn-secondary btn-sm" onclick="window.pipelineKeepBothPairs('${p.var1}', '${p.var2}')">
+                            <button class="btn btn-secondary btn-sm" onclick="window.pipelineKeepBothPairs('${p.var1.replace(/'/g, "\\'")}', '${p.var2.replace(/'/g, "\\'")}')">
                                 🤝 Keep Both
                             </button>
                         </div>
@@ -3375,11 +3435,11 @@
                     </td>
                     <td style="text-align: right;">
                         ${isDropped ? `
-                            <button class="btn btn-secondary btn-sm" onclick="window.pipelineRestoreFeatureStep4('${r.feature}')" title="Restore variable into modeling pipeline">
+                            <button class="btn btn-secondary btn-sm" onclick="window.pipelineRestoreFeatureStep4('${r.feature.replace(/'/g, "\\'")}')" title="Restore variable into modeling pipeline">
                                 ↩️ Include
                             </button>
                         ` : `
-                            <button class="btn btn-rose btn-sm" onclick="window.pipelineDropFeatureStep4('${r.feature}')" title="Exclude this variable from modeling">
+                            <button class="btn btn-rose btn-sm" onclick="window.pipelineDropFeatureStep4('${r.feature.replace(/'/g, "\\'")}')" title="Exclude this variable from modeling">
                                 🗑️ Exclude
                             </button>
                         `}
@@ -3844,6 +3904,19 @@
             ensEval.constraintNote = "StandardScaler fitted on Train and applied to Test; base models soft-blended.";
             benchmarkList.push({ id: 'ensemble', name: 'Ensemble Super Learner', model: ensemble, prep: fullPrep, eval: ensEval });
 
+            // Sort models descending by clinical out-of-sample performance so index 0 is truly the champion model
+            benchmarkList.sort((a, b) => {
+                if (isClassification) {
+                    const f1Diff = (b.eval.macroF1 || 0) - (a.eval.macroF1 || 0);
+                    if (Math.abs(f1Diff) > 0.0001) return f1Diff;
+                    return (b.eval.accuracy || 0) - (a.eval.accuracy || 0);
+                } else {
+                    const r2Diff = (b.eval.r2 || 0) - (a.eval.r2 || 0);
+                    if (Math.abs(r2Diff) > 0.0001) return r2Diff;
+                    return (a.eval.rmse || 0) - (b.eval.rmse || 0);
+                }
+            });
+
             AppState.pipeline.benchmarkResults = benchmarkList;
 
             // Render Leaderboard & Confusion Matrices
@@ -3947,7 +4020,34 @@
             const ev = item.eval;
             const cm = ev.confMatrix;
 
-            if (cm && cm.length === 2) {
+            if (!isClassification) {
+                // Continuous Regression Diagnostics Card
+                cmHtml += `
+                    <div class="card" style="padding: 16px; background: var(--bg-surface-subtle); border: 1px solid var(--border-color);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <strong style="font-size: 13.5px; color: var(--text-primary);">${item.name}</strong>
+                            <span class="pill pill-continuous" style="font-size: 10.5px;">R²: ${(ev.r2 !== undefined ? ev.r2.toFixed(3) : 'N/A')}</span>
+                        </div>
+                        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 12px;">
+                            ${ev.featuresUsed} &bull; ${ev.constraintNote}
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; font-size: 11px; text-align: center;">
+                            <div style="background: var(--bg-surface); padding: 8px; border-radius: 6px;">
+                                <div style="color: var(--text-muted); font-size: 10px; text-transform: uppercase;">RMSE</div>
+                                <strong style="font-size: 13.5px; color: var(--accent-cyan);">${ev.rmse !== undefined ? ev.rmse.toFixed(3) : 'N/A'}</strong>
+                            </div>
+                            <div style="background: var(--bg-surface); padding: 8px; border-radius: 6px;">
+                                <div style="color: var(--text-muted); font-size: 10px; text-transform: uppercase;">MAE</div>
+                                <strong style="font-size: 13.5px; color: var(--accent-purple);">${ev.mae !== undefined ? ev.mae.toFixed(3) : 'N/A'}</strong>
+                            </div>
+                            <div style="background: var(--bg-surface); padding: 8px; border-radius: 6px;">
+                                <div style="color: var(--text-muted); font-size: 10px; text-transform: uppercase;">R² Fit</div>
+                                <strong style="font-size: 13.5px; color: var(--accent-emerald);">${ev.r2 !== undefined ? ev.r2.toFixed(3) : 'N/A'}</strong>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else if (cm && cm.length === 2 && targetClasses && targetClasses.length >= 2) {
                 const tn = cm[0][0];
                 const fp = cm[0][1];
                 const fn = cm[1][0];

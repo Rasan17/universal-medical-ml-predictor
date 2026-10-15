@@ -1,3 +1,6 @@
+> [!WARNING]
+> **This repository is outdated and no longer maintained.** It contains known statistical errors. The corrected and independently verified version is at **https://github.com/Rasan17/ai**, running online at **https://rasan17.github.io/ai/**.
+
 # Universal Medical ML/NeuralNet Predictor
 
 An interactive, in-browser client-side Machine Learning and Deep Neural Network predictive modeling suite for **Clinical Medicine and Healthcare Research**, running 100% in the web browser with zero server dependencies and complete patient data privacy.
